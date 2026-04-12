@@ -1,8 +1,7 @@
-# src/financeiro.py
-
 def calcular_saldo(salarios, despesas):
     """Calcula o saldo final com base em listas de valores."""
     return sum(salarios) - sum(despesas)
+
 
 def validar_valor(valor):
     """Garante que o valor inserido é um número positivo."""
