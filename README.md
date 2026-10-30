@@ -4,7 +4,7 @@
 
 Controle financeiro pessoal que responde, toda semana: **quanto posso gastar sem comprometer as contas fixas e a reserva?**
 
-O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. Já funciona no terminal: menu interativo, regras testadas e dados gravados em disco (`dados/`).
+O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. Já funciona: janela de desktop (tkinter), menu no terminal, regras testadas e dados gravados em disco (`dados/`).
 
 | Início | Novo gasto | Histórico | Cadastros |
 | --- | --- | --- | --- |
@@ -33,17 +33,24 @@ A especificação completa (regras RN01 a RN16 e critérios CA01 a CA16) está e
 | `formatos.py` | Reais e percentuais no formato brasileiro, sem `float` |
 | `armazenamento.py` | `RepositorioJson` (arquivos JSON com escrita segura), trava contra dois Fôlegos abertos e cópias de segurança |
 | `exportacao.py` | Exporta um ciclo para CSV (abre no Excel/Numbers) |
+| `gui/` | Janela de desktop (tkinter): `app.py`, `contexto.py` e uma aba por arquivo `tela_*.py` |
 | `menu.py` | Menu interativo no terminal (primeiro uso, painel, gastos, cadastros com edição, histórico, configurações) |
 
 Dinheiro é sempre em **centavos** (`int`). Os testes em `tests/folego/` são a melhor documentação das regras: o nome de cada teste traz o código da regra (RN) ou do critério (CA).
 
 ## Como usar (resumo)
-Não precisa instalar nada: o Fôlego só usa o Python que já vem no Mac. Abra o Terminal e rode:
+Não precisa instalar nada: o Fôlego só usa o Python que já vem no Mac.
+
+**Janela (recomendado):** dê um duplo clique em `folego.command`, ou no Terminal:
 ```bash
 cd ~/Documents/Projetos/folego-app
-python3 -m src.main
+python3 -m src.gui
 ```
-No menu, digite o número da opção e Enter. `0` sai e volta. Os dados ficam salvos em `dados/`.
+Abas: **Início** (quanto pode gastar), **Novo gasto** (registrar, corrigir e excluir), **Histórico**, **Cadastros** (entradas, contas fixas e metas) e **Configurações**.
+
+**Menu de texto (alternativa):** `python3 -m src.main`; digite o número da opção e Enter.
+
+Os dois usam os mesmos dados, em `dados/` (essa pasta não vai para o Git). Só um dos dois pode estar aberto por vez.
 
 ## Como rodar (desenvolvimento)
 Requer Python 3.10+ (testado também em 3.9).
@@ -66,7 +73,7 @@ flake8 src/ tests/             # estilo (config em .flake8)
 
 ## Atalho para abrir de qualquer pasta
 ```bash
-alias folego='cd ~/Documents/Projetos/folego-app && python3 -m src.main'
+alias folego='cd ~/Documents/Projetos/folego-app && python3 -m src.gui'
 ```
 Ponha essa linha no `~/.zshrc` e abra um terminal novo.
 
@@ -77,7 +84,7 @@ No menu, opção **7 - Exportar ciclo (CSV)**. O arquivo vai para `dados/exporta
 `python -m src.lembrete` roda a rotina de alertas sozinho e manda uma notificação do macOS; se o Fôlego estiver aberto, não faz nada. Para agendar todo dia às 8h, siga [`docs/lembrete-macos.md`](docs/lembrete-macos.md). Nada é instalado sem você pedir.
 
 ## Próximos passos
-- Gráficos em texto no painel.
+- Visual da janela: hoje usa o tkinter do sistema (Tk 8.5), simples; dá para trocar por `pywebview` sem mexer nas regras.
 - Fazer a "hora do resumo" das configurações mudar o horário do lembrete.
 
 ## Histórico
