@@ -10,18 +10,26 @@ pelo nome. Cada operação lê o arquivo e grava de volta inteiro, num arquivo
 temporário trocado com os.replace: uma queda no meio da gravação não estraga
 os dados. Um arquivo ilegível nunca é sobrescrito: levanta ArmazenamentoCorrompido.
 
-shortcut: sem trava entre processos, vale um app aberto por pasta; upgrade: trava de arquivo ou SQLite.
+Proteção dos dados: travar() impede dois Fôlegos na mesma pasta (quem chama é o main.py) e
+fazer_backup() guarda cópias datadas em pasta/backups/.
 """
 from __future__ import annotations
 
 import enum
 import json
 import os
+import shutil
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Callable, List, Union, get_args, get_origin, get_type_hints
+from typing import Callable, Iterator, List, Optional, Union, get_args, get_origin, get_type_hints
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
 
 from .calculadora import Orcamento
 from .modelos import (
@@ -33,8 +41,70 @@ HISTORICO = "historico.json"
 CONFIGURACOES = "configuracoes.json"
 
 
+ARQUIVOS = (ORCAMENTO, HISTORICO, CONFIGURACOES)
+TRAVA = ".trava"
+BACKUPS = "backups"
+
+
 class ArmazenamentoCorrompido(Exception):
     """Arquivo de dados existe mas não pode ser lido. Ele fica como está."""
+
+
+class PastaEmUso(Exception):
+    """Outro Fôlego já está aberto nesta pasta."""
+
+
+@contextmanager
+def travar(pasta: Path) -> Iterator[None]:
+    """Trava a pasta enquanto o with durar. O sistema solta a trava sozinho se o processo morrer."""
+    pasta = Path(pasta)
+    pasta.mkdir(parents=True, exist_ok=True)
+    if fcntl is None:
+        # shortcut: no Windows (sem fcntl) não há trava, vale um Fôlego por pasta; upgrade: msvcrt.locking.
+        yield
+        return
+    descritor = os.open(pasta / TRAVA, os.O_CREAT | os.O_RDWR)
+    try:
+        try:
+            fcntl.flock(descritor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as erro:
+            raise PastaEmUso(
+                f"Já existe outro Fôlego aberto nesta pasta ({pasta}). Feche o outro Fôlego e tente de novo."
+            ) from erro
+        yield
+    finally:
+        os.close(descritor)  # fechar solta a trava
+
+
+def _conteudo(pasta: Path) -> dict:
+    return {n: (pasta / n).read_bytes() for n in ARQUIVOS if (pasta / n).is_file()}
+
+
+def fazer_backup(pasta: Path, agora: datetime, manter: int = 10) -> Optional[Path]:
+    """Copia os arquivos de dados para pasta/backups/AAAA-MM-DD-HHMMSS/, se mudaram desde a cópia mais
+    recente, e apaga as cópias mais antigas além de `manter`. Só lê os originais. Devolve a cópia nova ou None."""
+    pasta = Path(pasta)
+    dados = _conteudo(pasta)
+    raiz = pasta / BACKUPS
+    raiz.mkdir(exist_ok=True)
+    copias = sorted(d for d in raiz.iterdir() if d.is_dir() and not d.name.startswith("."))
+    novo = None
+    if dados and not (copias and _conteudo(copias[-1]) == dados):
+        novo = raiz / agora.strftime("%Y-%m-%d-%H%M%S")
+        temporario = Path(tempfile.mkdtemp(dir=raiz, prefix=".tmp"))  # a cópia só aparece inteira
+        try:
+            for nome, conteudo in dados.items():
+                (temporario / nome).write_bytes(conteudo)
+            if novo.exists():  # duas cópias no mesmo segundo
+                shutil.rmtree(novo)
+            os.rename(temporario, novo)
+        except BaseException:
+            shutil.rmtree(temporario, ignore_errors=True)
+            raise
+        copias = sorted({*copias, novo})
+    for antiga in copias[:max(len(copias) - manter, 0)]:
+        shutil.rmtree(antiga)
+    return novo
 
 
 @dataclass(frozen=True)

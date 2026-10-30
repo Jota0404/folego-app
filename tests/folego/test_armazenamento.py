@@ -1,4 +1,7 @@
 import json
+import subprocess
+import sys
+from pathlib import Path
 from dataclasses import replace
 from datetime import date, datetime, time
 
@@ -6,7 +9,7 @@ import pytest
 
 from src.folego.alertas import CodigoAlerta
 from src.folego.armazenamento import (
-    CONFIGURACOES, HISTORICO, ORCAMENTO, ArmazenamentoCorrompido, RepositorioJson,
+    CONFIGURACOES, HISTORICO, ORCAMENTO, ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, fazer_backup, travar,
 )
 from src.folego.calculadora import Orcamento
 from src.folego.modelos import (
@@ -312,3 +315,65 @@ def test_formato_de_data_no_arquivo_e_iso(tmp_path):
     assert gravado["ciclos_fechados"][0]["ciclo"] == {"inicio": "2026-10-01", "fim": "2026-10-31"}
     assert gravado["alertas"][0]["disparado_em"] == agora.isoformat()
     assert date.fromisoformat(gravado["ciclos_fechados"][0]["ciclo"]["inicio"]) == data(1, 10)
+
+
+# --- trava e backup ----------------------------------------------------------
+
+def test_travar_recusa_segunda_trava_e_libera_depois(tmp_path):
+    with travar(tmp_path):
+        with pytest.raises(PastaEmUso, match="Feche o outro Fôlego"):
+            with travar(tmp_path):
+                pass
+    with travar(tmp_path):  # liberou
+        pass
+
+
+def test_travar_recusa_trava_de_outro_processo(tmp_path):
+    codigo = ("import sys, time\nfrom src.folego.armazenamento import travar\n"
+              "with travar(sys.argv[1]):\n    print('ok', flush=True)\n    time.sleep(30)")
+    filho = subprocess.Popen([sys.executable, "-c", codigo, str(tmp_path)], stdout=subprocess.PIPE, text=True,
+                             cwd=Path(__file__).resolve().parents[2])
+    try:
+        assert filho.stdout.readline().strip() == "ok"
+        with pytest.raises(PastaEmUso):
+            with travar(tmp_path):
+                pass
+    finally:
+        filho.kill()
+        filho.wait()
+    with travar(tmp_path):  # processo morto, trava solta sozinha
+        pass
+
+
+def _dados(pasta, **arquivos):
+    for nome, texto in arquivos.items():
+        (pasta / f"{nome}.json").write_text(texto)
+
+
+def test_backup_copia_so_o_que_existe_e_nao_duplica_sem_mudanca(tmp_path):
+    _dados(tmp_path, orcamento="a", configuracoes="c")
+    copia = fazer_backup(tmp_path, datetime(2026, 10, 5, 12, 0, 0))
+    assert copia.name == "2026-10-05-120000"
+    assert sorted(p.name for p in copia.iterdir()) == ["configuracoes.json", "orcamento.json"]
+    assert fazer_backup(tmp_path, datetime(2026, 10, 6, 12, 0, 0)) is None
+    assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+def test_backup_duplica_quando_mudou_e_nunca_altera_os_originais(tmp_path):
+    _dados(tmp_path, orcamento="a", historico="h")
+    fazer_backup(tmp_path, datetime(2026, 10, 5, 12, 0, 0))
+    _dados(tmp_path, orcamento="b")
+    fazer_backup(tmp_path, datetime(2026, 10, 6, 12, 0, 0))
+    assert [p.name for p in sorted((tmp_path / "backups").iterdir())] == ["2026-10-05-120000", "2026-10-06-120000"]
+    assert (tmp_path / "backups/2026-10-05-120000/orcamento.json").read_text() == "a"
+    assert (tmp_path / "backups/2026-10-06-120000/orcamento.json").read_text() == "b"
+    assert (tmp_path / "orcamento.json").read_text() == "b" and (tmp_path / "historico.json").read_text() == "h"
+
+
+def test_backup_poda_alem_de_manter_e_sem_dados_nao_cria_copia(tmp_path):
+    assert fazer_backup(tmp_path, agora) is None
+    for dia in range(1, 6):
+        _dados(tmp_path, orcamento=str(dia))
+        fazer_backup(tmp_path, datetime(2026, 10, dia, 12, 0, 0), manter=3)
+    assert [p.name for p in sorted((tmp_path / "backups").iterdir())] == [
+        "2026-10-03-120000", "2026-10-04-120000", "2026-10-05-120000"]

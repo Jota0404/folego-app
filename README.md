@@ -31,8 +31,8 @@ A especificação completa (regras RN01 a RN16 e critérios CA01 a CA16) está e
 | `alertas.py` | Alertas A1 a A5: quando disparam e o texto de cada um |
 | `servicos.py` | Salvar cadastros, configurar e disparar alertas (repositórios são `Protocol`) |
 | `formatos.py` | Reais e percentuais no formato brasileiro, sem `float` |
-| `armazenamento.py` | `RepositorioJson`: grava orçamento, histórico e configurações em arquivos JSON, com escrita segura |
-| `menu.py` | Menu interativo no terminal (primeiro uso, painel, gastos, cadastros, histórico, configurações) |
+| `armazenamento.py` | `RepositorioJson` (arquivos JSON com escrita segura), trava contra dois Fôlegos abertos e cópias de segurança |
+| `menu.py` | Menu interativo no terminal (primeiro uso, painel, gastos, cadastros com edição, histórico, configurações) |
 
 Dinheiro é sempre em **centavos** (`int`). Os testes em `tests/folego/` são a melhor documentação das regras: o nome de cada teste traz o código da regra (RN) ou do critério (CA).
 
@@ -49,9 +49,21 @@ pytest tests/                  # testes
 flake8 src/ tests/             # estilo (config em .flake8)
 ```
 
+## Seus dados
+- Ficam em `~/.folego` (mude com a variável `FOLEGO_PASTA`): `orcamento.json`, `historico.json` e `configuracoes.json`.
+- **Cópias de segurança automáticas:** toda vez que você abre o Fôlego e os dados mudaram desde a última cópia, ele guarda uma em `~/.folego/backups/AAAA-MM-DD-HHMMSS/` (as 10 mais recentes). Para voltar a uma cópia, feche o Fôlego e copie os três arquivos de volta para `~/.folego`.
+- **Um Fôlego por vez:** se abrir um segundo na mesma pasta, ele avisa e sai, para não corromper os dados (no Windows essa trava não existe).
+- **Arquivo quebrado:** o Fôlego avisa e não abre, sem sobrescrever nada.
+
+## Atalho para abrir de qualquer pasta
+```bash
+alias folego='cd ~/Documents/Projetos/folego-app && .venv/bin/python -m src.main'
+```
+Ponha essa linha no `~/.zshrc` e abra um terminal novo.
+
 ## Próximos passos
-- Gráficos e relatórios exportados; hoje há só o painel e o histórico em texto.
-- Trava entre processos no armazenamento (hoje vale um Fôlego aberto por vez).
+- Exportar o ciclo para CSV e gráficos em texto.
+- Lembrete diário: hoje os alertas aparecem quando você abre o Fôlego, não por notificação.
 
 ## Histórico
 [`docs/andamento.md`](docs/andamento.md) e [`docs/qa/`](docs/qa/) registram a construção da versão Android (7 etapas, 05 a 07/10/2026), que foi concluída e depois substituída por esta versão Python (o código Kotlin não está mais em nenhum repositório).

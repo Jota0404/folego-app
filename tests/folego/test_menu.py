@@ -1,9 +1,10 @@
 """Menu do terminal, com entrada simulada e repositórios em memória."""
+from dataclasses import replace
 from datetime import datetime
 
 from src.folego.calculadora import Orcamento
 from src.folego.menu import executar
-from src.folego.modelos import Configuracoes, ContaFixa, TipoEntrada
+from src.folego.modelos import Configuracoes, ContaFixa, Gasto, TipoEntrada
 from . import cenario
 from .cenario import data
 from .fakes import Ambiente
@@ -156,3 +157,68 @@ def test_configuracoes_salva_limite_e_percentuais_e_reaplica_validacao():
     assert "Configurações salvas." in texto
     _, texto = rodar(["5", "", "", "90", "80", "0"])
     assert "menor que o crítico" in texto
+
+
+# --- corrigir, editar e pausar ------------------------------------------------
+
+def com_ids(**mudancas):
+    """Cenário base com ids e descrições, como viria do banco."""
+    base = replace(
+        cenario.orcamento,
+        entradas=[replace(cenario.salario, id=1, descricao="Salário")],
+        contas=[replace(cenario.aluguel, id=1, descricao="Aluguel"),
+                replace(cenario.celular, id=2, descricao="Celular")],
+        metas=[replace(cenario.reserva, id=1, nome="Reserva")],
+    )
+    return replace(base, **mudancas)
+
+
+ALMOCO = Gasto(5_000, data(5, 10), "Almoço", id=1)
+
+
+def test_corrigir_gasto_troca_o_valor_e_mantem_o_resto():
+    ambiente, texto = rodar(["6", "1", "1", "70,00", "", "", "", "0"], orcamento=com_ids(gastos=[ALMOCO]))
+    assert ambiente.orcamento.orcamento().gastos == [replace(ALMOCO, valor_centavos=7_000)]
+    assert "Gasto corrigido." in texto
+
+
+def test_corrigir_gasto_aceita_data_so_com_dia_e_mes_e_bloqueia_data_futura():
+    ambiente, texto = rodar(["6", "1", "1", "", "06/10", "", "", "0"], orcamento=com_ids(gastos=[ALMOCO]))
+    assert ambiente.orcamento.orcamento().gastos == [ALMOCO]
+    assert "A data não pode ser no futuro." in texto
+
+
+def test_excluir_gasto():
+    ambiente, texto = rodar(["6", "1", "2", "0"], orcamento=com_ids(gastos=[ALMOCO]))
+    assert ambiente.orcamento.orcamento().gastos == []
+    assert "Gasto excluído." in texto
+
+
+def test_gasto_de_ciclo_fechado_nao_aparece_para_corrigir():
+    antigo = Gasto(2_000, data(28, 9), id=2)
+    # o gasto de setembro não aparece na lista do ciclo de outubro: nada a corrigir
+    ambiente, texto = rodar(["6", "0"], orcamento=com_ids(gastos=[antigo]))
+    assert "Nenhum gasto neste ciclo." in texto
+    assert ambiente.orcamento.orcamento().gastos == [antigo]
+
+
+def test_editar_conta_fixa_troca_o_valor_e_aplica_as_regras_do_nucleo():
+    ambiente, texto = rodar(["3", "2", "5", "1", "", "1.100,00", "", "", "0", "0", "0"], orcamento=com_ids())
+    aluguel = next(c for c in ambiente.orcamento.orcamento().contas if c.id == 1)
+    assert aluguel.valor_centavos == 110_000 and "Conta atualizada." in texto
+    _, texto = rodar(["3", "2", "5", "1", "", "0", "", "", "0", "0", "0"], orcamento=com_ids())
+    assert "Não foi possível: O valor precisa ser maior que zero." in texto
+
+
+def test_editar_entrada_troca_o_valor():
+    ambiente, texto = rodar(["3", "1", "4", "1", "", "3.500,00", "", "", "0", "0", "0"], orcamento=com_ids())
+    assert ambiente.orcamento.orcamento().entradas[0].valor_centavos == 350_000
+    assert "Entrada atualizada." in texto
+
+
+def test_pausar_e_reativar_meta():
+    ambiente, texto = rodar(["3", "3", "5", "1", "5", "1", "0", "0", "0"], orcamento=com_ids())
+    assert ambiente.orcamento.orcamento().metas[0].ativa
+    assert "Meta pausada." in texto and "Meta reativada." in texto
+    ambiente, _ = rodar(["3", "3", "5", "1", "0", "0", "0"], orcamento=com_ids())
+    assert not ambiente.orcamento.orcamento().metas[0].ativa

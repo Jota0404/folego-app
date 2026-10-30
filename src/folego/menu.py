@@ -50,10 +50,6 @@ def _pontos_base(texto: str) -> int:
     return valor
 
 
-def _data(texto: str) -> date:
-    return datetime.strptime(texto, "%d/%m/%Y").date()
-
-
 class _SemAgendador:
     """Terminal não tem notificação agendada: a rotina roda ao abrir o menu."""
 
@@ -121,6 +117,19 @@ class _Menu:
     def ciclo(self):
         return ciclo_atual(self.repo.configuracoes(), self.hoje)
 
+    def _data(self, texto: str) -> date:
+        """dd/mm/aaaa, ou só dd/mm (no ano de hoje)."""
+        if texto.count("/") == 1:
+            texto += f"/{self.hoje.year}"
+        return datetime.strptime(texto, "%d/%m/%Y").date()
+
+    def _data_ou_sem(self, texto: str) -> Optional[date]:
+        return None if texto.lower() == "sem" else self._data(texto)
+
+    @staticmethod
+    def _inteiro_ou_sem(texto: str) -> Optional[int]:
+        return None if texto.lower() == "sem" else int(texto)
+
     # --- primeiro uso ------------------------------------------------------
 
     def primeiro_uso(self) -> None:
@@ -161,7 +170,7 @@ class _Menu:
 
     def novo_gasto(self) -> None:
         valor = self.perguntar("Valor do gasto", _reais)
-        data = self.perguntar(f"Data dd/mm/aaaa (Enter = hoje, {formatar_data(self.hoje)})", _data, self.hoje)
+        data = self.perguntar(f"Data dd/mm/aaaa (Enter = hoje, {formatar_data(self.hoje)})", self._data, self.hoje)
         descricao = self.perguntar("Descrição (opcional)", str.strip, "", vazio_vale=True)
         categorias = self.repo.categorias()
         self.dizer("Categorias: " + ", ".join(f"{c.id}={c.nome}" for c in categorias))
@@ -175,6 +184,42 @@ class _Menu:
         gasto = Gasto(valor, data, descricao, categoria_id)
         self.decisao(self.cadastros.salvar_gasto(gasto, self.hoje, self.agora), "Gasto salvo.")
 
+    def corrigir_gastos(self) -> None:
+        """Edita ou exclui um gasto do ciclo atual (gasto de ciclo fechado é recusado pelo núcleo)."""
+        ciclo = self.ciclo()
+        gastos = sorted((g for g in self.repo.orcamento().gastos if g.data in ciclo),
+                        key=lambda g: (g.data, g.id), reverse=True)
+        if not gastos:
+            self.dizer("Nenhum gasto neste ciclo.")
+            return
+        nomes = {c.id: c.nome for c in self.repo.categorias()}
+        self.dizer("")
+        for n, g in enumerate(gastos, 1):
+            self.dizer(f"  {n}. {formatar_data(g.data)} - {formatar_reais(g.valor_centavos)} "
+                       f"{g.descricao} [{nomes.get(g.categoria_id, '')}]".rstrip())
+        numero = self.perguntar("Número do gasto (Enter = voltar)", int, 0)
+        if not 1 <= numero <= len(gastos):
+            return
+        g = gastos[numero - 1]
+        acao = self.escolher("O que fazer?", [("1", "Corrigir"), ("2", "Excluir"), ("0", "Voltar")])
+        if acao == "2":
+            self.decisao(self.cadastros.excluir_gasto(g, self.hoje), "Gasto excluído.")
+        elif acao == "1":
+            self.dizer("Enter mantém o valor atual.")
+            valor = self.perguntar(f"Valor (atual {formatar_reais(g.valor_centavos)})", _reais, g.valor_centavos)
+            data = self.perguntar(f"Data (atual {formatar_data(g.data)})", self._data, g.data)
+            descricao = self.perguntar("Descrição", str.strip, g.descricao, vazio_vale=True)
+            ids = {c.id for c in self.repo.categorias()}
+
+            def categoria(texto: str) -> int:
+                if int(texto) not in ids:
+                    raise ValueError
+                return int(texto)
+            self.dizer("Categorias: " + ", ".join(f"{i}={n}" for i, n in nomes.items()))
+            categoria_id = self.perguntar("Categoria", categoria, g.categoria_id)
+            nova = replace(g, valor_centavos=valor, data=data, descricao=descricao, categoria_id=categoria_id)
+            self.decisao(self.cadastros.salvar_gasto(nova, self.hoje, self.agora), "Gasto corrigido.")
+
     # --- cadastros ---------------------------------------------------------
 
     def cadastros_menu(self) -> None:
@@ -186,12 +231,13 @@ class _Menu:
                 return
             telas.get(opcao, lambda: self.dizer("Opção inválida."))()
 
-    def _submenu(self, titulo: str, listar, adicionar, excluir, extra=None) -> None:
+    def _submenu(self, titulo: str, listar, adicionar, excluir, *extras) -> None:
+        """extras: pares (rótulo, ação), numerados a partir de 4."""
         opcoes = [("1", "Listar"), ("2", "Adicionar"), ("3", "Excluir")]
         acoes = {"1": listar, "2": adicionar, "3": excluir}
-        if extra:
-            opcoes.append(("4", extra[0]))
-            acoes["4"] = extra[1]
+        for numero, (rotulo, acao) in enumerate(extras, 4):
+            opcoes.append((str(numero), rotulo))
+            acoes[str(numero)] = acao
         while True:
             opcao = self.escolher(titulo, opcoes + [("0", "Voltar")])
             if opcao == "0":
@@ -224,10 +270,10 @@ class _Menu:
             valor = self.perguntar("Valor", _reais)
             recorrente = self.perguntar("Tipo: 1 = recorrente, 2 = avulsa", self._um_ou_dois) == 1
             inicio = self.ciclo().inicio if recorrente else self.hoje
-            data = self.perguntar(f"Data de início dd/mm/aaaa (Enter = {formatar_data(inicio)})", _data, inicio)
+            data = self.perguntar(f"Data de início dd/mm/aaaa (Enter = {formatar_data(inicio)})", self._data, inicio)
             fim = None
             if recorrente:
-                fim = self.perguntar("Data de fim dd/mm/aaaa (Enter = sem fim)", _data, vazio_vale=True)
+                fim = self.perguntar("Data de fim dd/mm/aaaa (Enter = sem fim)", self._data, vazio_vale=True)
             entrada = Entrada(valor, TipoEntrada.RECORRENTE if recorrente else TipoEntrada.AVULSA,
                               data, fim, descricao)
             self.decisao(self.cadastros.salvar_entrada(entrada, self.hoje), "Entrada salva.")
@@ -237,7 +283,24 @@ class _Menu:
             if e:
                 self.decisao(self.cadastros.excluir_entrada(e, self.hoje), "Entrada excluída.")
 
-        self._submenu("Entradas", listar, adicionar, excluir)
+        def editar():
+            e = self._escolher_item(itens(), listar, "Número da entrada a editar")
+            if not e:
+                return
+            self.dizer("Enter mantém o valor atual.")
+            descricao = self.perguntar("Descrição", str.strip, e.descricao)
+            valor = self.perguntar(f"Valor (atual {formatar_reais(e.valor_centavos)})", _reais, e.valor_centavos)
+            inicio = self.perguntar(f"Data de início (atual {formatar_data(e.data_inicio)})", self._data,
+                                    e.data_inicio)
+            fim = e.data_fim
+            if e.tipo == TipoEntrada.RECORRENTE:
+                atual = formatar_data(e.data_fim) if e.data_fim else "sem fim"
+                fim = self.perguntar(f"Data de fim (atual {atual}; 'sem' = sem fim)", self._data_ou_sem,
+                                     e.data_fim, vazio_vale=True)
+            nova = replace(e, descricao=descricao, valor_centavos=valor, data_inicio=inicio, data_fim=fim)
+            self.decisao(self.cadastros.salvar_entrada(nova, self.hoje), "Entrada atualizada.")
+
+        self._submenu("Entradas", listar, adicionar, excluir, ("Editar", editar))
 
     @staticmethod
     def _um_ou_dois(texto: str) -> int:
@@ -288,7 +351,22 @@ class _Menu:
                 self.cadastros.encerrar(c, self.hoje)
                 self.dizer("Conta encerrada: ela vale até o fim do ciclo atual.")
 
-        self._submenu("Contas fixas", listar, adicionar, excluir, ("Encerrar", encerrar))
+        def editar():
+            c = self._escolher_item(itens(), listar, "Número da conta a editar")
+            if not c:
+                return
+            self.dizer("Enter mantém o valor atual.")
+            descricao = self.perguntar("Descrição", str.strip, c.descricao)
+            valor = self.perguntar(f"Valor (atual {formatar_reais(c.valor_centavos)})", _reais, c.valor_centavos)
+            vencimento = self.perguntar(f"Dia do vencimento (atual {c.dia_vencimento})", int, c.dia_vencimento)
+            atual = f"{c.duracao_meses} meses" if c.duracao_meses else "sem fim"
+            duracao = self.perguntar(f"Duração em meses (atual {atual}; 'sem' = sem fim)", self._inteiro_ou_sem,
+                                     c.duracao_meses, vazio_vale=True)
+            nova = replace(c, descricao=descricao, valor_centavos=valor, dia_vencimento=vencimento,
+                           duracao_meses=duracao)
+            self.decisao(self.cadastros.salvar_conta(nova, self.hoje), "Conta atualizada.")
+
+        self._submenu("Contas fixas", listar, adicionar, excluir, ("Encerrar", encerrar), ("Editar", editar))
 
     def metas(self) -> None:
         def itens():
@@ -317,7 +395,26 @@ class _Menu:
                 self.cadastros.excluir_meta(m)
                 self.dizer("Meta excluída.")
 
-        self._submenu("Metas de reserva", listar, adicionar, excluir)
+        def editar():
+            m = self._escolher_item(itens(), listar, "Número da meta a editar")
+            if not m:
+                return
+            self.dizer("Enter mantém o valor atual.")
+            nome = self.perguntar("Nome", str.strip, m.nome)
+            if m.tipo == TipoMeta.VALOR:
+                valor = self.perguntar(f"Valor (atual {formatar_reais(m.valor)})", _reais, m.valor)
+            else:
+                valor = self.perguntar(f"Percentual (atual {formatar_percentual(m.valor)})", _pontos_base, m.valor)
+            self.decisao(self.cadastros.salvar_meta(replace(m, nome=nome, valor=valor), self.hoje), "Meta atualizada.")
+
+        def pausar():
+            m = self._escolher_item(itens(), listar, "Número da meta a pausar ou reativar")
+            if m:
+                texto = "Meta reativada." if not m.ativa else "Meta pausada."
+                self.decisao(self.cadastros.salvar_meta(replace(m, ativa=not m.ativa), self.hoje), texto)
+
+        self._submenu("Metas de reserva", listar, adicionar, excluir, ("Editar", editar),
+                      ("Pausar ou reativar", pausar))
 
     # --- histórico e configurações -----------------------------------------
 
@@ -368,10 +465,11 @@ class _Menu:
             self.primeiro_uso()
         self.alertas.rotina_diaria(self.hoje, self.agora)
         telas = {"1": self.inicio, "2": self.novo_gasto, "3": self.cadastros_menu,
-                 "4": self.historico, "5": self.configuracoes}
+                 "4": self.historico, "5": self.configuracoes, "6": self.corrigir_gastos}
         while True:
             opcao = self.escolher("Fôlego", [("1", "Início"), ("2", "Novo gasto"), ("3", "Cadastros"),
-                                             ("4", "Histórico"), ("5", "Configurações"), ("0", "Sair")])
+                                             ("4", "Histórico"), ("5", "Configurações"),
+                                             ("6", "Corrigir ou excluir gasto"), ("0", "Sair")])
             if opcao == "0":
                 return
             telas.get(opcao, lambda: self.dizer("Opção inválida."))()
