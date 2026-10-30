@@ -42,12 +42,18 @@ CONFIGURACOES = "configuracoes.json"
 
 
 ARQUIVOS = (ORCAMENTO, HISTORICO, CONFIGURACOES)
+RAIZ_DO_PROJETO = Path(__file__).resolve().parents[2]
 TRAVA = ".trava"
 BACKUPS = "backups"
 
 
 class ArmazenamentoCorrompido(Exception):
     """Arquivo de dados existe mas não pode ser lido. Ele fica como está."""
+
+
+def pasta_padrao() -> Path:
+    """Onde ficam os dados: FOLEGO_PASTA, ou a pasta dados/ dentro do projeto (fora do Git)."""
+    return Path(os.environ.get("FOLEGO_PASTA", RAIZ_DO_PROJETO / "dados"))
 
 
 class PastaEmUso(Exception):

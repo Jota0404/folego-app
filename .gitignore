@@ -205,3 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Dados pessoais do Fôlego (repositório público: nunca versionar)
+dados/

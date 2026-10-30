@@ -1,6 +1,5 @@
 """Lembrete diário: python -m src.lembrete. Roda a rotina diária de alertas fora do menu
 (feito para ser agendado, ver docs/lembrete-macos.md). Usa a mesma pasta do main.py."""
-import os
 import subprocess
 import sys
 from datetime import date, datetime
@@ -8,7 +7,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.folego.alertas import mensagem
-from src.folego.armazenamento import ARQUIVOS, ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, travar
+from src.folego.armazenamento import (
+    ARQUIVOS, ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, pasta_padrao, travar,
+)
 from src.folego.decisoes import mostrar_primeiro_uso
 from src.folego.servicos import Alertas
 
@@ -68,7 +69,7 @@ def executar(pasta, notificar: Notificar, hoje: Optional[date] = None, agora: Op
 
 
 def main() -> int:
-    pasta = Path(os.environ.get("FOLEGO_PASTA", Path.home() / ".folego"))
+    pasta = pasta_padrao()
     return executar(pasta, notificar_real, date.today(), datetime.now())
 
 

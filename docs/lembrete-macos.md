@@ -53,15 +53,15 @@ Crie o arquivo `~/Library/LaunchAgents/com.folego.lembrete.plist`. Troque
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/SEU_USUARIO/.folego/lembrete.log</string>
+    <string>/Users/SEU_USUARIO/Documents/Projetos/folego-app/dados/lembrete.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/SEU_USUARIO/.folego/lembrete.log</string>
+    <string>/Users/SEU_USUARIO/Documents/Projetos/folego-app/dados/lembrete.log</string>
 </dict>
 </plist>
 ```
 
-O launchd não entende `~`: use sempre o caminho completo. A pasta `~/.folego`
-precisa existir (ela é criada na primeira vez que você usa o Fôlego).
+O launchd não entende `~`: use sempre o caminho completo. A pasta `dados/`
+precisa existir (ela é criada na primeira vez que você abre o Fôlego).
 
 ### Ligar
 
@@ -89,4 +89,4 @@ Depois, se quiser, apague o arquivo `.plist`. Se mudar o plist, desligue e ligue
   agendamento hoje. Para outro horário, edite `Hour` e `Minute` e religue.
 - O Mac precisa estar ligado nessa hora. Se estiver dormindo, o launchd roda o lembrete
   quando ele acordar; se estiver desligado, o dia é pulado.
-- Erros e mensagens ficam em `~/.folego/lembrete.log`.
+- Erros e mensagens ficam em `dados/lembrete.log`.

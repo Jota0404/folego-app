@@ -1,15 +1,15 @@
-"""Ponto de entrada: python -m src.main. Os dados ficam em ~/.folego (ou na pasta de FOLEGO_PASTA)."""
-import os
+"""Ponto de entrada: python -m src.main. Os dados ficam em dados/ (ou na pasta de FOLEGO_PASTA)."""
 import sys
 from datetime import datetime
-from pathlib import Path
 
-from src.folego.armazenamento import ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, fazer_backup, travar
+from src.folego.armazenamento import (
+    ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, fazer_backup, pasta_padrao, travar,
+)
 from src.folego.menu import executar
 
 
 def main() -> int:
-    pasta = Path(os.environ.get("FOLEGO_PASTA", Path.home() / ".folego"))
+    pasta = pasta_padrao()
     try:
         with travar(pasta):
             repo = RepositorioJson(pasta)

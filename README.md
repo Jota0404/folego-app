@@ -4,7 +4,7 @@
 
 Controle financeiro pessoal que responde, toda semana: **quanto posso gastar sem comprometer as contas fixas e a reserva?**
 
-O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. Já funciona no terminal: menu interativo, regras testadas e dados gravados em disco (`~/.folego`).
+O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. Já funciona no terminal: menu interativo, regras testadas e dados gravados em disco (`dados/`).
 
 | Início | Novo gasto | Histórico | Cadastros |
 | --- | --- | --- | --- |
@@ -43,7 +43,7 @@ Não precisa instalar nada: o Fôlego só usa o Python que já vem no Mac. Abra 
 cd ~/Documents/Projetos/folego-app
 python3 -m src.main
 ```
-No menu, digite o número da opção e Enter. `0` sai e volta. Os dados ficam salvos em `~/.folego`.
+No menu, digite o número da opção e Enter. `0` sai e volta. Os dados ficam salvos em `dados/`.
 
 ## Como rodar (desenvolvimento)
 Requer Python 3.10+ (testado também em 3.9).
@@ -53,14 +53,14 @@ cd folego-app
 python -m venv .venv
 source .venv/bin/activate      # macOS/Linux  (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt
-python -m src.main            # abre o Fôlego (dados em ~/.folego; mude com FOLEGO_PASTA)
+python -m src.main            # abre o Fôlego (dados em dados/; mude com FOLEGO_PASTA)
 pytest tests/                  # testes
 flake8 src/ tests/             # estilo (config em .flake8)
 ```
 
 ## Seus dados
-- Ficam em `~/.folego` (mude com a variável `FOLEGO_PASTA`): `orcamento.json`, `historico.json` e `configuracoes.json`.
-- **Cópias de segurança automáticas:** toda vez que você abre o Fôlego e os dados mudaram desde a última cópia, ele guarda uma em `~/.folego/backups/AAAA-MM-DD-HHMMSS/` (as 10 mais recentes). Para voltar a uma cópia, feche o Fôlego e copie os três arquivos de volta para `~/.folego`.
+- Ficam em `dados/` (mude com a variável `FOLEGO_PASTA`): `orcamento.json`, `historico.json` e `configuracoes.json`.
+- **Cópias de segurança automáticas:** toda vez que você abre o Fôlego e os dados mudaram desde a última cópia, ele guarda uma em `dados/backups/AAAA-MM-DD-HHMMSS/` (as 10 mais recentes). Para voltar a uma cópia, feche o Fôlego e copie os três arquivos de volta para `dados/`.
 - **Um Fôlego por vez:** se abrir um segundo na mesma pasta, ele avisa e sai, para não corromper os dados (no Windows essa trava não existe).
 - **Arquivo quebrado:** o Fôlego avisa e não abre, sem sobrescrever nada.
 
@@ -71,7 +71,7 @@ alias folego='cd ~/Documents/Projetos/folego-app && python3 -m src.main'
 Ponha essa linha no `~/.zshrc` e abra um terminal novo.
 
 ## Exportar para planilha
-No menu, opção **7 - Exportar ciclo (CSV)**. O arquivo vai para `~/.folego/exportacoes/folego-AAAA-MM-DD_a_AAAA-MM-DD.csv`, com entradas, contas fixas, gastos e o resumo do ciclo (separador `;`, valores como `1500,00`).
+No menu, opção **7 - Exportar ciclo (CSV)**. O arquivo vai para `dados/exportacoes/folego-AAAA-MM-DD_a_AAAA-MM-DD.csv`, com entradas, contas fixas, gastos e o resumo do ciclo (separador `;`, valores como `1500,00`).
 
 ## Lembrete diário (opcional)
 `python -m src.lembrete` roda a rotina de alertas sozinho e manda uma notificação do macOS; se o Fôlego estiver aberto, não faz nada. Para agendar todo dia às 8h, siga [`docs/lembrete-macos.md`](docs/lembrete-macos.md). Nada é instalado sem você pedir.
