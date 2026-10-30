@@ -53,7 +53,7 @@ def ler_pontos_base(texto: str) -> Optional[int]:
 
 def formatar_data(data: date) -> str:
     """2026-10-06 vira "06/10/2026"."""
-    return f"{data.day:02d}/{data.month:02d}/{data.year}"
+    return f"{data.day:02d}/{data.month:02d}/{data.year:04d}"
 
 
 def formatar_dia_mes(data: date) -> str:
