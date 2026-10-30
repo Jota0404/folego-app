@@ -1,25 +1,29 @@
-"""Janela do Fôlego: python -m src.gui. Mesmos dados do menu de terminal (dados/ ou FOLEGO_PASTA)."""
+"""O app Fôlego (janela de desktop): python -m src.app. Dados em dados/ (ou FOLEGO_PASTA)."""
 import sys
 from datetime import datetime
 
 from src.folego.armazenamento import (
     ArmazenamentoCorrompido, PastaEmUso, RepositorioJson, fazer_backup, pasta_padrao, travar,
 )
-from src.folego.gui.app import abrir
 
 
 def main() -> int:
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from src.folego.qt.janela import abrir
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("Fôlego")
     pasta = pasta_padrao()
     try:
         with travar(pasta):
             repo = RepositorioJson(pasta)
             fazer_backup(pasta, datetime.now())
-            raiz, _ = abrir(repo, pasta_exportacao=pasta / "exportacoes")
-            raiz.mainloop()
+            janela, _ = abrir(repo, pasta_exportacao=pasta / "exportacoes")
+            return app.exec()
     except (PastaEmUso, ArmazenamentoCorrompido) as erro:
-        print(erro, file=sys.stderr)
+        QMessageBox.critical(None, "Fôlego", str(erro))
         return 1
-    return 0
 
 
 if __name__ == "__main__":

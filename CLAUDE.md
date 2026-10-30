@@ -24,3 +24,9 @@ Nasceu como app Android (Kotlin); a versão Python é a que continua.
 - Cada RN e CA tem teste automatizado com o código no nome (`test_rn13_...`, `test_ca06_...`).
 - Rodar antes de cada push: `pytest tests/` e `flake8 src/ tests/` (config em `.flake8`).
 - Compatível com Python 3.9+ (o CI usa 3.10).
+
+## Interface
+- App de desktop em PySide6 (`src/folego/qt/`); conversões e textos das telas ficam em `src/folego/apresentacao/` (sem GUI, testados à parte).
+- Nunca use `QMessageBox`/`QInputDialog` direto nas telas: use `contexto.aviso/info/confirmar` (os testes os trocam por falsos).
+- O tkinter do Python do sistema (Tk 8.5) não desenha neste macOS: não usar.
+- Confira o visual com `widget.grab().save(...)` em `QT_QPA_PLATFORM=offscreen` e, para o app real, por captura de tela.
