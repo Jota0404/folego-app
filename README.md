@@ -26,6 +26,43 @@ O **Finanças CLI** resolve essa "dor" oferecendo uma interface minimalista para
 * Gerenciador de pacotes `pip`.
 
 ### Instalação
-1. Clone o repositório:
+1. Clone o repositório e entre na pasta:
    ```bash
-   git clone [https://github.com/SEU-USUARIO/financas-cli.git](https://github.com/SEU-USUARIO/financas-cli.git)# financas-cli
+   git clone https://github.com/Jota0404/financas-cli.git
+   cd financas-cli
+   ```
+2. Crie um ambiente virtual (uma "caixinha" só para as dependências deste projeto):
+   ```bash
+   python -m venv .venv
+   ```
+3. Ative o ambiente virtual:
+   ```bash
+   source .venv/bin/activate      # macOS/Linux
+   .venv\Scripts\activate         # Windows
+   ```
+4. Instale as dependências:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Como rodar o CLI antigo
+```bash
+python src/main.py
+```
+Obs.: `python -m src.main` não funciona hoje, porque o import em `src/main.py` é `from financas import ...`.
+
+### Testes e lint
+```bash
+pytest tests/            # roda os testes
+flake8 src/ tests/       # confere o estilo (configuração em .flake8)
+```
+
+## 🧩 Núcleo de regras (src/folego)
+É o port em Python das regras do app Android Fôlego (repositório `financas-app`). Módulos de `src/folego/`:
+* `modelos.py`: as estruturas de dados (ciclo, entradas, gastos, contas fixas, metas, configurações).
+* `calculadora.py`: cálculos de ciclo, orçamento, limite semanal, painel e fechamento.
+* `decisoes.py`: decide o que pode ser salvo, bloqueado ou salvo com aviso.
+* `alertas.py`: alertas A1 a A5, quando disparam e o texto de cada um.
+* `formatos.py`: valores no formato brasileiro (reais e percentuais), sem usar float.
+
+Dinheiro é sempre em **centavos** (`int`), nunca `float`. Os testes em `tests/folego/` são a melhor documentação das regras (RN e CA).
