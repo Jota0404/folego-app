@@ -4,7 +4,7 @@
 
 Controle financeiro pessoal que responde, toda semana: **quanto posso gastar sem comprometer as contas fixas e a reserva?**
 
-O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. O núcleo de regras já está pronto e testado; a interface (menu no terminal) e a gravação em disco ainda não existem.
+O Fôlego nasceu como app Android (Kotlin) e agora vive aqui em Python. Já funciona no terminal: menu interativo, regras testadas e dados gravados em disco (`~/.folego`).
 
 | Início | Novo gasto | Histórico | Cadastros |
 | --- | --- | --- | --- |
@@ -29,8 +29,10 @@ A especificação completa (regras RN01 a RN16 e critérios CA01 a CA16) está e
 | `calculadora.py` | Ciclo, orçamento, limite semanal, painel e fechamento |
 | `decisoes.py` | O que pode ser salvo, bloqueado ou salvo com aviso |
 | `alertas.py` | Alertas A1 a A5: quando disparam e o texto de cada um |
-| `servicos.py` | Salvar cadastros, configurar e disparar alertas (repositórios são `Protocol`; hoje só em memória, nos testes) |
+| `servicos.py` | Salvar cadastros, configurar e disparar alertas (repositórios são `Protocol`) |
 | `formatos.py` | Reais e percentuais no formato brasileiro, sem `float` |
+| `armazenamento.py` | `RepositorioJson`: grava orçamento, histórico e configurações em arquivos JSON, com escrita segura |
+| `menu.py` | Menu interativo no terminal (primeiro uso, painel, gastos, cadastros, histórico, configurações) |
 
 Dinheiro é sempre em **centavos** (`int`). Os testes em `tests/folego/` são a melhor documentação das regras: o nome de cada teste traz o código da regra (RN) ou do critério (CA).
 
@@ -42,13 +44,14 @@ cd folego-app
 python -m venv .venv
 source .venv/bin/activate      # macOS/Linux  (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt
+python -m src.main            # abre o Fôlego (dados em ~/.folego; mude com FOLEGO_PASTA)
 pytest tests/                  # testes
 flake8 src/ tests/             # estilo (config em .flake8)
 ```
 
 ## Próximos passos
-1. Menu no terminal que use `Cadastros`, `Configurar` e `Alertas`.
-2. Repositórios que gravem em disco (JSON ou SQLite).
+- Gráficos e relatórios exportados; hoje há só o painel e o histórico em texto.
+- Trava entre processos no armazenamento (hoje vale um Fôlego aberto por vez).
 
 ## Histórico
 [`docs/andamento.md`](docs/andamento.md) e [`docs/qa/`](docs/qa/) registram a construção da versão Android (7 etapas, 05 a 07/10/2026), que foi concluída e depois substituída por esta versão Python (o código Kotlin não está mais em nenhum repositório).
