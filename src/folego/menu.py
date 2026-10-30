@@ -1,0 +1,386 @@
+"""Menu interativo no terminal. Só apresenta e aplica: toda decisão de regra
+vem de decisoes e servicos. Este é o único lugar que lê o relógio (quando
+hoje/agora não são passados)."""
+from __future__ import annotations
+
+from dataclasses import replace
+from datetime import date, datetime
+from typing import Callable, Optional
+
+from .alertas import mensagem
+from .calculadora import Faixa, ativa_em, ciclo_atual, parcela_em
+from .decisoes import Bloqueado, ErroCadastro, PermitidoComAviso, PermitidoComReservaInvadida, inicio_pela_parcela
+from .formatos import (
+    formatar_data, formatar_dia_mes, formatar_percentual, formatar_reais, ler_centavos, ler_pontos_base,
+)
+from .modelos import ContaFixa, Entrada, Gasto, MetaReserva, OUTROS, TipoEntrada, TipoMeta
+from .servicos import Alertas, Cadastros, Configurar
+
+_ERROS = {
+    ErroCadastro.DESCRICAO_VAZIA: "A descrição não pode ficar vazia.",
+    ErroCadastro.VALOR_ZERO_OU_NEGATIVO: "O valor precisa ser maior que zero.",
+    ErroCadastro.PERCENTUAL_ACIMA_DE_100: "O percentual não pode passar de 100%.",
+    ErroCadastro.DIA_VENCIMENTO_INVALIDO: "O dia do vencimento precisa estar entre 1 e 31.",
+    ErroCadastro.DURACAO_INVALIDA: "A duração precisa ser de pelo menos 1 mês.",
+    ErroCadastro.PARCELA_INVALIDA: "A parcela atual precisa estar entre 1 e a duração da conta.",
+    ErroCadastro.DATA_EM_CICLO_FECHADO: "Essa data é de um ciclo já fechado.",
+    ErroCadastro.DATA_FUTURA: "A data não pode ser no futuro.",
+    ErroCadastro.FIM_ANTES_DO_INICIO: "O fim não pode ser antes do início.",
+    ErroCadastro.METAS_NAO_CABEM: "As metas de reserva não cabem nas entradas menos as contas fixas.",
+    ErroCadastro.CONTA_JA_DESCONTADA: "Essa conta já foi descontada em um ciclo: encerre em vez de excluir.",
+    ErroCadastro.CONTA_SAIRIA_DO_CICLO: "Essa mudança tiraria a conta do ciclo atual.",
+    ErroCadastro.DIA_PAGAMENTO_INVALIDO: "O dia do pagamento precisa estar entre 1 e 31.",
+    ErroCadastro.PERCENTUAL_FORA_DA_FAIXA: "Atenção vai de 1% a 99% e crítico de 2% a 100%.",
+    ErroCadastro.ATENCAO_NAO_MENOR_QUE_CRITICO: "O percentual de atenção precisa ser menor que o crítico.",
+}
+_FAIXAS = {Faixa.VERDE: "verde", Faixa.AMARELA: "amarela", Faixa.VERMELHA: "vermelha"}
+
+
+def _reais(texto: str) -> int:
+    valor = ler_centavos(texto)
+    if valor is None:
+        raise ValueError
+    return valor
+
+
+def _pontos_base(texto: str) -> int:
+    valor = ler_pontos_base(texto)
+    if valor is None:
+        raise ValueError
+    return valor
+
+
+def _data(texto: str) -> date:
+    return datetime.strptime(texto, "%d/%m/%Y").date()
+
+
+class _SemAgendador:
+    """Terminal não tem notificação agendada: a rotina roda ao abrir o menu."""
+
+    def reagendar(self, horario) -> None:
+        pass
+
+
+class _Notificador:
+    def __init__(self, saida: Callable[[str], None]):
+        self._saida = saida
+
+    def avisar(self, alerta) -> None:
+        m = mensagem(alerta)
+        self._saida(f"*** {m.titulo}: {m.texto}")
+
+
+class _Menu:
+    def __init__(self, repo, entrada, saida, hoje: date, agora: datetime):
+        self.repo = repo
+        self.ler = entrada
+        self.dizer = saida
+        self.hoje = hoje
+        self.agora = agora
+        self.alertas = Alertas(repo, repo, repo, _Notificador(saida))
+        self.cadastros = Cadastros(repo, repo, self.alertas)
+        self.configurar = Configurar(repo, repo, self.alertas, _SemAgendador())
+
+    # --- entrada e saída ---------------------------------------------------
+
+    def perguntar(self, texto: str, converter: Callable[[str], object] = str.strip, padrao: object = None,
+                  vazio_vale: bool = False):
+        """Repergunta até a conversão dar certo. Linha vazia devolve o padrão, se houver."""
+        while True:
+            linha = self.ler(f"{texto}: ").strip()
+            if not linha and (padrao is not None or vazio_vale):
+                return padrao
+            try:
+                return converter(linha)
+            except ValueError:
+                self.dizer("Não entendi. Tente de novo.")
+
+    def decisao(self, decisao, salvo: str) -> bool:
+        """Mostra o resultado de uma decisão do núcleo; devolve True se salvou/aplicou."""
+        if isinstance(decisao, Bloqueado):
+            texto = _ERROS[decisao.erro]
+            if decisao.falta_para_metas:
+                texto += f" Faltam {formatar_reais(decisao.falta_para_metas)}."
+            self.dizer(f"Não foi possível: {texto}")
+            return False
+        self.dizer(salvo)
+        if isinstance(decisao, PermitidoComAviso):
+            self.dizer("Atenção: as metas de reserva não cabem mais. "
+                       f"Faltam {formatar_reais(decisao.falta_para_metas)}.")
+        elif isinstance(decisao, PermitidoComReservaInvadida):
+            self.dizer(f"Atenção: este gasto invadiu a reserva em {formatar_reais(decisao.reserva_invadida)}.")
+        return True
+
+    def escolher(self, titulo: str, opcoes: list) -> str:
+        self.dizer("")
+        self.dizer(titulo)
+        for numero, rotulo in opcoes:
+            self.dizer(f"  {numero} - {rotulo}")
+        return self.ler("Opção: ").strip()
+
+    def ciclo(self):
+        return ciclo_atual(self.repo.configuracoes(), self.hoje)
+
+    # --- primeiro uso ------------------------------------------------------
+
+    def primeiro_uso(self) -> None:
+        self.dizer("Bem-vindo ao Fôlego! Vamos configurar o básico.")
+        while True:
+            dia = self.perguntar("Qual o dia do mês em que você recebe? (1 a 31)", int)
+            if self.decisao(self.configurar.definir_dia_no_primeiro_uso(dia), "Dia do pagamento definido."):
+                break
+        while True:
+            valor = self.perguntar("Qual o valor do seu salário? (ex.: 3.000,00)", _reais)
+            entrada = Entrada(valor, TipoEntrada.RECORRENTE, self.ciclo().inicio, descricao="Salário")
+            if self.decisao(self.cadastros.salvar_entrada(entrada, self.hoje), "Salário cadastrado."):
+                break
+        self.configurar.concluir_primeiro_uso()
+
+    # --- início e novo gasto -----------------------------------------------
+
+    def inicio(self) -> None:
+        config = self.repo.configuracoes()
+        ciclo = ciclo_atual(config, self.hoje)
+        painel = self.repo.orcamento().painel(ciclo, self.hoje, config)
+        resumo = painel.resumo_do_ciclo
+        self.dizer("")
+        self.dizer(f"Ciclo: {formatar_data(ciclo.inicio)} a {formatar_data(ciclo.fim)}")
+        self.dizer(f"Disponível da semana ({formatar_dia_mes(painel.semana.inicio)} a "
+                   f"{formatar_dia_mes(painel.semana.fim)}): {formatar_reais(painel.disponivel_da_semana)}")
+        self.dizer(f"Limite da semana: {formatar_reais(painel.semana.valor_centavos)}")
+        self.dizer(f"Disponível do ciclo: {formatar_reais(resumo.disponivel)}")
+        self.dizer(f"Reserva do ciclo: {formatar_reais(resumo.reserva)}")
+        consumo = formatar_percentual(painel.consumo_pontos_base)
+        self.dizer(f"Barra: {_FAIXAS[painel.faixa]}, {consumo} do limite consumido")
+        if painel.semana.ritmo_nao_fecha_ciclo:
+            self.dizer("Aviso: nesse ritmo o limite manual não fecha o ciclo.")
+        if resumo.reserva_invadida:
+            self.dizer(f"Reserva invadida em {formatar_reais(resumo.reserva_invadida)}.")
+        if resumo.falta_para_metas:
+            self.dizer(f"As metas não cabem: faltam {formatar_reais(resumo.falta_para_metas)}.")
+
+    def novo_gasto(self) -> None:
+        valor = self.perguntar("Valor do gasto", _reais)
+        data = self.perguntar(f"Data dd/mm/aaaa (Enter = hoje, {formatar_data(self.hoje)})", _data, self.hoje)
+        descricao = self.perguntar("Descrição (opcional)", str.strip, "", vazio_vale=True)
+        categorias = self.repo.categorias()
+        self.dizer("Categorias: " + ", ".join(f"{c.id}={c.nome}" for c in categorias))
+        ids = {c.id for c in categorias}
+
+        def categoria(texto: str) -> int:
+            if int(texto) not in ids:
+                raise ValueError
+            return int(texto)
+        categoria_id = self.perguntar("Categoria (Enter = Outros)", categoria, OUTROS)
+        gasto = Gasto(valor, data, descricao, categoria_id)
+        self.decisao(self.cadastros.salvar_gasto(gasto, self.hoje, self.agora), "Gasto salvo.")
+
+    # --- cadastros ---------------------------------------------------------
+
+    def cadastros_menu(self) -> None:
+        telas = {"1": self.entradas, "2": self.contas, "3": self.metas}
+        while True:
+            opcao = self.escolher("Cadastros", [("1", "Entradas"), ("2", "Contas fixas"),
+                                                ("3", "Metas de reserva"), ("0", "Voltar")])
+            if opcao == "0":
+                return
+            telas.get(opcao, lambda: self.dizer("Opção inválida."))()
+
+    def _submenu(self, titulo: str, listar, adicionar, excluir, extra=None) -> None:
+        opcoes = [("1", "Listar"), ("2", "Adicionar"), ("3", "Excluir")]
+        acoes = {"1": listar, "2": adicionar, "3": excluir}
+        if extra:
+            opcoes.append(("4", extra[0]))
+            acoes["4"] = extra[1]
+        while True:
+            opcao = self.escolher(titulo, opcoes + [("0", "Voltar")])
+            if opcao == "0":
+                return
+            acoes.get(opcao, lambda: self.dizer("Opção inválida."))()
+
+    def _escolher_item(self, itens: list, listar, pergunta: str):
+        if not itens:
+            listar()
+            return None
+        listar()
+        numero = self.perguntar(f"{pergunta} (Enter = cancelar)", int, 0)
+        return itens[numero - 1] if 1 <= numero <= len(itens) else None
+
+    def entradas(self) -> None:
+        def itens():
+            return self.repo.orcamento().entradas
+
+        def listar():
+            if not itens():
+                self.dizer("Nenhuma entrada ainda.")
+            for n, e in enumerate(itens(), 1):
+                tipo = "recorrente" if e.tipo == TipoEntrada.RECORRENTE else "avulsa"
+                fim = f" até {formatar_data(e.data_fim)}" if e.data_fim else ""
+                self.dizer(f"  {n}. {e.descricao} - {formatar_reais(e.valor_centavos)} ({tipo}, "
+                           f"desde {formatar_data(e.data_inicio)}{fim})")
+
+        def adicionar():
+            descricao = self.perguntar("Descrição", str.strip, "", vazio_vale=True)
+            valor = self.perguntar("Valor", _reais)
+            recorrente = self.perguntar("Tipo: 1 = recorrente, 2 = avulsa", self._um_ou_dois) == 1
+            inicio = self.ciclo().inicio if recorrente else self.hoje
+            data = self.perguntar(f"Data de início dd/mm/aaaa (Enter = {formatar_data(inicio)})", _data, inicio)
+            fim = None
+            if recorrente:
+                fim = self.perguntar("Data de fim dd/mm/aaaa (Enter = sem fim)", _data, vazio_vale=True)
+            entrada = Entrada(valor, TipoEntrada.RECORRENTE if recorrente else TipoEntrada.AVULSA,
+                              data, fim, descricao)
+            self.decisao(self.cadastros.salvar_entrada(entrada, self.hoje), "Entrada salva.")
+
+        def excluir():
+            e = self._escolher_item(itens(), listar, "Número da entrada a excluir")
+            if e:
+                self.decisao(self.cadastros.excluir_entrada(e, self.hoje), "Entrada excluída.")
+
+        self._submenu("Entradas", listar, adicionar, excluir)
+
+    @staticmethod
+    def _um_ou_dois(texto: str) -> int:
+        if texto not in ("1", "2"):
+            raise ValueError
+        return int(texto)
+
+    def contas(self) -> None:
+        def itens():
+            return self.repo.orcamento().contas
+
+        def listar():
+            ciclo = self.ciclo()
+            if not itens():
+                self.dizer("Nenhuma conta fixa ainda.")
+            for n, c in enumerate(itens(), 1):
+                if not ativa_em(c, ciclo):
+                    situacao = "fora do ciclo atual"
+                elif c.duracao_meses is None:
+                    situacao = "sem fim"
+                else:
+                    situacao = f"parcela {parcela_em(c, ciclo)} de {c.duracao_meses}"
+                if c.encerrada_em:
+                    situacao += f", encerrada em {formatar_data(c.encerrada_em)}"
+                self.dizer(f"  {n}. {c.descricao} - {formatar_reais(c.valor_centavos)}, "
+                           f"vence dia {c.dia_vencimento} ({situacao})")
+
+        def adicionar():
+            descricao = self.perguntar("Descrição", str.strip, "", vazio_vale=True)
+            valor = self.perguntar("Valor", _reais)
+            vencimento = self.perguntar("Dia do vencimento (1 a 31)", int)
+            duracao = self.perguntar("Duração em meses (Enter = sem fim)", int, vazio_vale=True)
+            inicio = self.ciclo().inicio
+            if duracao is not None:
+                parcela = self.perguntar("Parcela atual (Enter = 1)", int, 1)
+                inicio = inicio_pela_parcela(self.ciclo(), parcela)
+            conta = ContaFixa(valor, inicio, duracao, None, descricao, vencimento)
+            self.decisao(self.cadastros.salvar_conta(conta, self.hoje), "Conta salva.")
+
+        def excluir():
+            c = self._escolher_item(itens(), listar, "Número da conta a excluir")
+            if c:
+                self.decisao(self.cadastros.excluir_conta(c, self.hoje), "Conta excluída.")
+
+        def encerrar():
+            c = self._escolher_item(itens(), listar, "Número da conta a encerrar")
+            if c:
+                self.cadastros.encerrar(c, self.hoje)
+                self.dizer("Conta encerrada: ela vale até o fim do ciclo atual.")
+
+        self._submenu("Contas fixas", listar, adicionar, excluir, ("Encerrar", encerrar))
+
+    def metas(self) -> None:
+        def itens():
+            return self.repo.orcamento().metas
+
+        def listar():
+            if not itens():
+                self.dizer("Nenhuma meta de reserva ainda.")
+            for n, m in enumerate(itens(), 1):
+                valor = formatar_reais(m.valor) if m.tipo == TipoMeta.VALOR else formatar_percentual(m.valor)
+                self.dizer(f"  {n}. {m.nome} - {valor}{'' if m.ativa else ' (pausada)'}")
+
+        def adicionar():
+            nome = self.perguntar("Nome", str.strip, "", vazio_vale=True)
+            por_valor = self.perguntar("Tipo: 1 = valor em reais, 2 = percentual das entradas", self._um_ou_dois) == 1
+            if por_valor:
+                meta = MetaReserva(TipoMeta.VALOR, self.perguntar("Valor", _reais), nome=nome)
+            else:
+                meta = MetaReserva(TipoMeta.PERCENTUAL, self.perguntar("Percentual (ex.: 10)", _pontos_base),
+                                   nome=nome)
+            self.decisao(self.cadastros.salvar_meta(meta, self.hoje), "Meta salva.")
+
+        def excluir():
+            m = self._escolher_item(itens(), listar, "Número da meta a excluir")
+            if m:
+                self.cadastros.excluir_meta(m)
+                self.dizer("Meta excluída.")
+
+        self._submenu("Metas de reserva", listar, adicionar, excluir)
+
+    # --- histórico e configurações -----------------------------------------
+
+    def historico(self) -> None:
+        ciclo = self.ciclo()
+        gastos = [g for g in self.repo.orcamento().gastos if g.data in ciclo]
+        self.dizer("")
+        self.dizer("Gastos do ciclo atual:")
+        if not gastos:
+            self.dizer("  Nenhum gasto ainda.")
+        for dia in sorted({g.data for g in gastos}, reverse=True):
+            do_dia = [g for g in gastos if g.data == dia]
+            self.dizer(f"  {formatar_data(dia)} - {formatar_reais(sum(g.valor_centavos for g in do_dia))}")
+            for g in do_dia:
+                self.dizer(f"    {formatar_reais(g.valor_centavos)} {g.descricao}".rstrip())
+        self.dizer("Ciclos fechados:")
+        fechados = sorted(self.repo.ciclos_fechados(), key=lambda f: f.ciclo.inicio, reverse=True)
+        if not fechados:
+            self.dizer("  Nenhum ciclo fechado ainda.")
+        for f in fechados:
+            r = f.resumo
+            self.dizer(f"  {formatar_data(f.ciclo.inicio)} a {formatar_data(f.ciclo.fim)}: "
+                       f"entradas {formatar_reais(r.entradas)}, gastos {formatar_reais(r.gastos)}, "
+                       f"sobrou {formatar_reais(max(0, r.disponivel))}, "
+                       f"reserva invadida {formatar_reais(f.reserva_invadida)}")
+
+    def configuracoes(self) -> None:
+        atual = self.repo.configuracoes()
+        limite = "automático" if atual.limite_semanal_manual is None else formatar_reais(atual.limite_semanal_manual)
+        self.dizer("")
+        self.dizer(f"Dia do pagamento: {atual.dia_pagamento}")
+        self.dizer(f"Limite semanal manual: {limite}")
+        self.dizer(f"Atenção em {formatar_percentual(atual.percentual_atencao)} e "
+                   f"crítico em {formatar_percentual(atual.percentual_critico)}")
+        self.dizer("Enter mantém o valor atual (no limite, Enter volta ao automático).")
+        dia = self.perguntar("Novo dia do pagamento", int, atual.dia_pagamento)
+        manual = self.perguntar("Limite semanal manual", _reais, vazio_vale=True)
+        atencao = self.perguntar("Percentual de atenção", _pontos_base, atual.percentual_atencao)
+        critico = self.perguntar("Percentual crítico", _pontos_base, atual.percentual_critico)
+        nova = replace(atual, dia_pagamento=dia, limite_semanal_manual=manual,
+                       percentual_atencao=atencao, percentual_critico=critico)
+        self.decisao(self.configurar.salvar(nova, self.hoje), "Configurações salvas.")
+
+    # --- laço principal ----------------------------------------------------
+
+    def rodar(self) -> None:
+        if self.configurar.mostrar_primeiro_uso():
+            self.primeiro_uso()
+        self.alertas.rotina_diaria(self.hoje, self.agora)
+        telas = {"1": self.inicio, "2": self.novo_gasto, "3": self.cadastros_menu,
+                 "4": self.historico, "5": self.configuracoes}
+        while True:
+            opcao = self.escolher("Fôlego", [("1", "Início"), ("2", "Novo gasto"), ("3", "Cadastros"),
+                                             ("4", "Histórico"), ("5", "Configurações"), ("0", "Sair")])
+            if opcao == "0":
+                return
+            telas.get(opcao, lambda: self.dizer("Opção inválida."))()
+
+
+def executar(repo, entrada: Callable[[str], str] = input, saida: Callable[[str], None] = print,
+             hoje: Optional[date] = None, agora: Optional[datetime] = None) -> None:
+    """Roda o menu até o usuário sair. repo implementa os três repositórios de servicos."""
+    try:
+        _Menu(repo, entrada, saida, hoje or date.today(), agora or datetime.now()).rodar()
+    except (EOFError, KeyboardInterrupt):
+        saida("")
