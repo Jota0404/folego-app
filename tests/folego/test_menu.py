@@ -7,20 +7,7 @@ from src.folego.menu import executar
 from src.folego.modelos import Configuracoes, ContaFixa, Gasto, TipoEntrada
 from . import cenario
 from .cenario import data
-from .fakes import Ambiente
-
-
-class RepoUnico:
-    """Junta os três repositórios do Ambiente em um objeto só, como o repositório em disco."""
-
-    def __init__(self, ambiente):
-        self._partes = [ambiente.orcamento, ambiente.historico, ambiente.configuracoes]
-
-    def __getattr__(self, nome):
-        for parte in self._partes:
-            if hasattr(parte, nome):
-                return getattr(parte, nome)
-        raise AttributeError(nome)
+from .fakes import Ambiente, RepoUnico
 
 
 def rodar(linhas, orcamento=cenario.orcamento, config=None, hoje=data(5, 10), pasta_exportacao=None):

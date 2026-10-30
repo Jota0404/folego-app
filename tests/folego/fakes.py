@@ -120,3 +120,16 @@ class Ambiente:
         self.notificador = NotificadorDeTeste()
         self.alertas = Alertas(self.orcamento, self.configuracoes, self.historico, self.notificador)
         self.cadastros = Cadastros(self.orcamento, self.configuracoes, self.alertas)
+
+
+class RepoUnico:
+    """Junta os três repositórios do Ambiente em um objeto só, como o repositório em disco."""
+
+    def __init__(self, ambiente):
+        self._partes = [ambiente.orcamento, ambiente.historico, ambiente.configuracoes]
+
+    def __getattr__(self, nome):
+        for parte in self._partes:
+            if hasattr(parte, nome):
+                return getattr(parte, nome)
+        raise AttributeError(nome)
