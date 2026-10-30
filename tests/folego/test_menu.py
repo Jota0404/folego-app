@@ -23,13 +23,13 @@ class RepoUnico:
         raise AttributeError(nome)
 
 
-def rodar(linhas, orcamento=cenario.orcamento, config=None, hoje=data(5, 10)):
+def rodar(linhas, orcamento=cenario.orcamento, config=None, hoje=data(5, 10), pasta_exportacao=None):
     """Roda o menu com as linhas digitadas e devolve (ambiente, texto da saída)."""
     ambiente = Ambiente(orcamento, config or Configuracoes(primeiro_uso_concluido=True))
     fila = iter(linhas)
     saida = []
     executar(RepoUnico(ambiente), entrada=lambda _: next(fila), saida=saida.append,
-             hoje=hoje, agora=datetime(2026, 10, 5, 9, 0))
+             hoje=hoje, agora=datetime(2026, 10, 5, 9, 0), pasta_exportacao=pasta_exportacao)
     return ambiente, "\n".join(saida)
 
 
@@ -222,3 +222,14 @@ def test_pausar_e_reativar_meta():
     assert "Meta pausada." in texto and "Meta reativada." in texto
     ambiente, _ = rodar(["3", "3", "5", "1", "0", "0", "0"], orcamento=com_ids())
     assert not ambiente.orcamento.orcamento().metas[0].ativa
+
+
+def test_exportar_ciclo_grava_o_csv_na_pasta_e_diz_onde(tmp_path):
+    _, texto = rodar(["7", "", "0"], orcamento=com_ids(gastos=[ALMOCO]), pasta_exportacao=tmp_path)
+    csv = tmp_path / "folego-2026-10-01_a_2026-10-31.csv"
+    assert str(csv) in texto and "Almoço" in csv.read_text(encoding="utf-8-sig")
+
+
+def test_exportar_sem_pasta_avisa():
+    _, texto = rodar(["7", "15/09", "0"], pasta_exportacao=None)
+    assert "Exportação indisponível" in texto

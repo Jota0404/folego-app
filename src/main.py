@@ -14,7 +14,7 @@ def main() -> int:
         with travar(pasta):
             repo = RepositorioJson(pasta)
             fazer_backup(pasta, datetime.now())
-            executar(repo)
+            executar(repo, pasta_exportacao=pasta / "exportacoes")
     except (PastaEmUso, ArmazenamentoCorrompido) as erro:
         print(erro, file=sys.stderr)
         return 1

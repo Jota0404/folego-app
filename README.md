@@ -32,6 +32,7 @@ A especificação completa (regras RN01 a RN16 e critérios CA01 a CA16) está e
 | `servicos.py` | Salvar cadastros, configurar e disparar alertas (repositórios são `Protocol`) |
 | `formatos.py` | Reais e percentuais no formato brasileiro, sem `float` |
 | `armazenamento.py` | `RepositorioJson` (arquivos JSON com escrita segura), trava contra dois Fôlegos abertos e cópias de segurança |
+| `exportacao.py` | Exporta um ciclo para CSV (abre no Excel/Numbers) |
 | `menu.py` | Menu interativo no terminal (primeiro uso, painel, gastos, cadastros com edição, histórico, configurações) |
 
 Dinheiro é sempre em **centavos** (`int`). Os testes em `tests/folego/` são a melhor documentação das regras: o nome de cada teste traz o código da regra (RN) ou do critério (CA).
@@ -61,9 +62,15 @@ alias folego='cd ~/Documents/Projetos/folego-app && .venv/bin/python -m src.main
 ```
 Ponha essa linha no `~/.zshrc` e abra um terminal novo.
 
+## Exportar para planilha
+No menu, opção **7 - Exportar ciclo (CSV)**. O arquivo vai para `~/.folego/exportacoes/folego-AAAA-MM-DD_a_AAAA-MM-DD.csv`, com entradas, contas fixas, gastos e o resumo do ciclo (separador `;`, valores como `1500,00`).
+
+## Lembrete diário (opcional)
+`python -m src.lembrete` roda a rotina de alertas sozinho e manda uma notificação do macOS; se o Fôlego estiver aberto, não faz nada. Para agendar todo dia às 8h, siga [`docs/lembrete-macos.md`](docs/lembrete-macos.md). Nada é instalado sem você pedir.
+
 ## Próximos passos
-- Exportar o ciclo para CSV e gráficos em texto.
-- Lembrete diário: hoje os alertas aparecem quando você abre o Fôlego, não por notificação.
+- Gráficos em texto no painel.
+- Fazer a "hora do resumo" das configurações mudar o horário do lembrete.
 
 ## Histórico
 [`docs/andamento.md`](docs/andamento.md) e [`docs/qa/`](docs/qa/) registram a construção da versão Android (7 etapas, 05 a 07/10/2026), que foi concluída e depois substituída por esta versão Python (o código Kotlin não está mais em nenhum repositório).

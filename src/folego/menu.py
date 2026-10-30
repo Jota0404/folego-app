@@ -5,11 +5,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date, datetime
+from pathlib import Path
 from typing import Callable, Optional
 
 from .alertas import mensagem
 from .calculadora import Faixa, ativa_em, ciclo_atual, parcela_em
 from .decisoes import Bloqueado, ErroCadastro, PermitidoComAviso, PermitidoComReservaInvadida, inicio_pela_parcela
+from .exportacao import exportar_ciclo
 from .formatos import (
     formatar_data, formatar_dia_mes, formatar_percentual, formatar_reais, ler_centavos, ler_pontos_base,
 )
@@ -67,8 +69,9 @@ class _Notificador:
 
 
 class _Menu:
-    def __init__(self, repo, entrada, saida, hoje: date, agora: datetime):
+    def __init__(self, repo, entrada, saida, hoje: date, agora: datetime, pasta_exportacao: Optional[Path] = None):
         self.repo = repo
+        self.pasta_exportacao = pasta_exportacao
         self.ler = entrada
         self.dizer = saida
         self.hoje = hoje
@@ -219,6 +222,18 @@ class _Menu:
             categoria_id = self.perguntar("Categoria", categoria, g.categoria_id)
             nova = replace(g, valor_centavos=valor, data=data, descricao=descricao, categoria_id=categoria_id)
             self.decisao(self.cadastros.salvar_gasto(nova, self.hoje, self.agora), "Gasto corrigido.")
+
+    def exportar(self) -> None:
+        """Grava o ciclo atual (ou um fechado, pela data) num CSV para planilha."""
+        if self.pasta_exportacao is None:
+            self.dizer("Exportação indisponível neste modo.")
+            return
+        config = self.repo.configuracoes()
+        data = self.perguntar(f"Data dentro do ciclo a exportar (Enter = hoje, {formatar_data(self.hoje)})",
+                              self._data, self.hoje)
+        ciclo = ciclo_atual(config, data)
+        caminho = exportar_ciclo(self.repo.orcamento(), ciclo, self.repo.categorias(), self.pasta_exportacao)
+        self.dizer(f"Ciclo {formatar_data(ciclo.inicio)} a {formatar_data(ciclo.fim)} exportado em: {caminho}")
 
     # --- cadastros ---------------------------------------------------------
 
@@ -465,20 +480,22 @@ class _Menu:
             self.primeiro_uso()
         self.alertas.rotina_diaria(self.hoje, self.agora)
         telas = {"1": self.inicio, "2": self.novo_gasto, "3": self.cadastros_menu,
-                 "4": self.historico, "5": self.configuracoes, "6": self.corrigir_gastos}
+                 "4": self.historico, "5": self.configuracoes, "6": self.corrigir_gastos, "7": self.exportar}
         while True:
             opcao = self.escolher("Fôlego", [("1", "Início"), ("2", "Novo gasto"), ("3", "Cadastros"),
                                              ("4", "Histórico"), ("5", "Configurações"),
-                                             ("6", "Corrigir ou excluir gasto"), ("0", "Sair")])
+                                             ("6", "Corrigir ou excluir gasto"), ("7", "Exportar ciclo (CSV)"),
+                                             ("0", "Sair")])
             if opcao == "0":
                 return
             telas.get(opcao, lambda: self.dizer("Opção inválida."))()
 
 
 def executar(repo, entrada: Callable[[str], str] = input, saida: Callable[[str], None] = print,
-             hoje: Optional[date] = None, agora: Optional[datetime] = None) -> None:
+             hoje: Optional[date] = None, agora: Optional[datetime] = None,
+             pasta_exportacao: Optional[Path] = None) -> None:
     """Roda o menu até o usuário sair. repo implementa os três repositórios de servicos."""
     try:
-        _Menu(repo, entrada, saida, hoje or date.today(), agora or datetime.now()).rodar()
+        _Menu(repo, entrada, saida, hoje or date.today(), agora or datetime.now(), pasta_exportacao).rodar()
     except (EOFError, KeyboardInterrupt):
         saida("")
