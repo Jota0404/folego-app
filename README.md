@@ -37,7 +37,15 @@ A especificação completa (regras RN01 a RN16 e critérios CA01 a CA16) está e
 
 Dinheiro é sempre em **centavos** (`int`). Os testes em `tests/folego/` são a melhor documentação das regras: o nome de cada teste traz o código da regra (RN) ou do critério (CA).
 
-## Como rodar
+## Como usar (resumo)
+Não precisa instalar nada: o Fôlego só usa o Python que já vem no Mac. Abra o Terminal e rode:
+```bash
+cd ~/Documents/Projetos/folego-app
+python3 -m src.main
+```
+No menu, digite o número da opção e Enter. `0` sai e volta. Os dados ficam salvos em `~/.folego`.
+
+## Como rodar (desenvolvimento)
 Requer Python 3.10+ (testado também em 3.9).
 ```bash
 git clone https://github.com/Jota0404/folego-app.git
@@ -58,7 +66,7 @@ flake8 src/ tests/             # estilo (config em .flake8)
 
 ## Atalho para abrir de qualquer pasta
 ```bash
-alias folego='cd ~/Documents/Projetos/folego-app && .venv/bin/python -m src.main'
+alias folego='cd ~/Documents/Projetos/folego-app && python3 -m src.main'
 ```
 Ponha essa linha no `~/.zshrc` e abra um terminal novo.
 

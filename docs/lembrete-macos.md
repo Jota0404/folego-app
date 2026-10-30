@@ -10,10 +10,10 @@ então abrir o app depois não repete.
 
 ## Testar à mão
 
-Na pasta do projeto, com o venv ligado:
+Na pasta do projeto:
 
 ```
-python -m src.lembrete
+python3 -m src.lembrete
 ```
 
 Sem erro, o código de saída é 0. Dados com problema dão saída 1 e uma mensagem
@@ -36,7 +36,7 @@ Crie o arquivo `~/Library/LaunchAgents/com.folego.lembrete.plist`. Troque
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/SEU_USUARIO/Documents/Projetos/folego-app/.venv/bin/python</string>
+        <string>/usr/bin/python3</string>
         <string>-m</string>
         <string>src.lembrete</string>
     </array>
